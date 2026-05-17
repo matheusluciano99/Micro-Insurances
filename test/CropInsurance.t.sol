@@ -352,8 +352,7 @@ contract CropInsuranceTest is Test {
         _report(START_DAY, 250);
         _report(START_DAY + 2, 0);
 
-        (uint256[] memory dayList, uint256[] memory rain, bool[] memory reported) =
-            insurance.getRainfallWindow(id);
+        (uint256[] memory dayList, uint256[] memory rain, bool[] memory reported) = insurance.getRainfallWindow(id);
 
         assertEq(dayList.length, DURATION);
         assertEq(dayList[0], START_DAY);

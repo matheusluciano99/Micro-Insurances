@@ -13,10 +13,7 @@ contract MockFunctionsRouter {
     bytes public lastData;
 
     /// @dev Mesma assinatura que FunctionsClient._sendRequest invoca.
-    function sendRequest(uint64, bytes calldata data, uint16, uint32, bytes32)
-        external
-        returns (bytes32 requestId)
-    {
+    function sendRequest(uint64, bytes calldata data, uint16, uint32, bytes32) external returns (bytes32 requestId) {
         nonce++;
         requestId = keccak256(abi.encodePacked(msg.sender, nonce));
         lastRequestId = requestId;

@@ -4,8 +4,7 @@ pragma solidity 0.8.34;
 import {Test} from "forge-std/Test.sol";
 import {WeatherOracle} from "../src/WeatherOracle.sol";
 import {NasaRainfallConsumer} from "../src/NasaRainfallConsumer.sol";
-import {FunctionsClient} from
-    "chainlink-brownie-contracts/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
+import {FunctionsClient} from "chainlink-brownie-contracts/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
 import {MockFunctionsRouter} from "./mocks/MockFunctionsRouter.sol";
 
 contract NasaRainfallConsumerTest is Test {
@@ -20,9 +19,8 @@ contract NasaRainfallConsumerTest is Test {
     function setUp() public {
         oracle = new WeatherOracle();
         router = new MockFunctionsRouter();
-        consumer = new NasaRainfallConsumer(
-            address(router), address(oracle), bytes32("don"), uint64(1), uint32(300000), SRC
-        );
+        consumer =
+            new NasaRainfallConsumer(address(router), address(oracle), bytes32("don"), uint64(1), uint32(300000), SRC);
         // O consumer passa a ser o reporter on-chain (alimentado pela DON).
         oracle.setReporter(address(consumer), true);
     }

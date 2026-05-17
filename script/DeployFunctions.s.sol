@@ -28,7 +28,8 @@ contract DeployFunctions is Script {
     // Dado faltante (-999) -> throw -> err no callback -> não reporta nada.
     string constant SOURCE = "const lat = args[0];\n" "const lon = args[1];\n" "const date = args[2];\n"
         "const url = `https://power.larc.nasa.gov/api/temporal/daily/point?parameters=PRECTOTCORR&community=AG&longitude=${lon}&latitude=${lat}&start=${date}&end=${date}&format=JSON`;\n"
-        "const r = await Functions.makeHttpRequest({ url: url });\n" "if (r.error) { throw Error('NASA request failed'); }\n"
+        "const r = await Functions.makeHttpRequest({ url: url });\n"
+        "if (r.error) { throw Error('NASA request failed'); }\n"
         "const v = r.data.properties.parameter.PRECTOTCORR[date];\n"
         "if (v === undefined || v < 0) { throw Error('rainfall unavailable'); }\n"
         "return Functions.encodeUint256(Math.round(v * 100));";

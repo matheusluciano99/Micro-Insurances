@@ -45,9 +45,9 @@ contract CropInsurance {
         uint256 regionId;
         uint256 startDay;
         uint256 endDay;
-        uint256 drySpellDays;       // N dias secos consecutivos
+        uint256 drySpellDays; // N dias secos consecutivos
         uint256 rainThresholdMm100; // limiar de "dia seco", em mm*100
-        uint256 insuredAmount;      // valor pago em caso de seca
+        uint256 insuredAmount; // valor pago em caso de seca
         bool paid;
         bool reserveReleased;
     }
@@ -62,7 +62,6 @@ contract CropInsurance {
         Claimable, // seca detectada, pode acionar claim
         Paid, // indenização já paga
         Expired // janela fechou sem seca
-
     }
 
     /// @notice Visão rica de uma apólice, pronta para a UI (campos derivados).
@@ -196,11 +195,7 @@ contract CropInsurance {
     /// @return triggered se houve seca elegível
     /// @return triggerDay primeiro dia em que a sequência atingiu N (0 se não)
     /// @return maxStreak maior sequência seca consecutiva até hoje na janela
-    function _scan(Policy storage p)
-        internal
-        view
-        returns (bool triggered, uint256 triggerDay, uint256 maxStreak)
-    {
+    function _scan(Policy storage p) internal view returns (bool triggered, uint256 triggerDay, uint256 maxStreak) {
         uint256 streak;
         uint256 today = currentDay();
 
@@ -275,11 +270,7 @@ contract CropInsurance {
 
     // --- Leituras para a UI --------------------------------------------------
 
-    function _windowProgress(Policy storage p)
-        internal
-        view
-        returns (uint256 daysElapsed, uint256 daysRemaining)
-    {
+    function _windowProgress(Policy storage p) internal view returns (uint256 daysElapsed, uint256 daysRemaining) {
         uint256 today = currentDay();
         uint256 duration = p.endDay - p.startDay + 1;
         if (today < p.startDay) {
@@ -426,8 +417,7 @@ contract CropInsurance {
     // aceita sucesso se a chamada não reverteu e (sem retorno OU retorno true).
 
     function _safeTransfer(address to, uint256 amount) internal {
-        (bool ok, bytes memory data) =
-            address(token).call(abi.encodeWithSelector(IERC20.transfer.selector, to, amount));
+        (bool ok, bytes memory data) = address(token).call(abi.encodeWithSelector(IERC20.transfer.selector, to, amount));
         require(ok && (data.length == 0 || abi.decode(data, (bool))), "Crop: transfer falhou");
     }
 
