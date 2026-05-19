@@ -51,15 +51,9 @@ forge build
 forge test                            # 33 testes (27 CropInsurance + 6 Functions)
 forge script script/Demo.s.sol -vv    # roteiro narrado da demo
 
-# Deploy em Anvil local (oráculo mock)
-anvil
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 \
-  --private-key <chave_anvil_0> --broadcast
-
-# Deploy do oráculo Chainlink Functions (Sepolia — precisa subscription+LINK)
-export SUBSCRIPTION_ID=<id de functions.chain.link>
-forge script script/DeployFunctions.s.sol --rpc-url $SEPOLIA_RPC \
-  --private-key $PRIVATE_KEY --broadcast
+# Deploy na Sepolia (lê .env: SEPOLIA_RPC_URL, SUBSCRIPTION_ID, ETHERSCAN_API_KEY)
+just deploy         # WeatherOracle + NasaRainfallConsumer (Chainlink Functions)
+just deploy-core    # MockStablecoin + CropInsurance (reusa o WeatherOracle)
 ```
 
 ## Demo

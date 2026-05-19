@@ -171,32 +171,49 @@ maxStreak, daysElapsed, daysRemaining`
 | `Crop: excede capital livre` | "Valor acima do capital livre do pool" |
 | `Oracle: somente reporter` | "Carteira sem permissão para reportar chuva" |
 
-## Setup local
+## Deploy na Sepolia (integração) — chainId 11155111
+
+Contratos verificados no Etherscan. ABIs: rode `forge build` (geram em
+`out/<Contrato>.sol/<Contrato>.json`, campo `.abi`) **ou** pegue do Etherscan.
+
+| Contrato | Endereço |
+|---|---|
+| `WeatherOracle` | `0x9b3ccC0007e6a2A6AeEbc2bf84df1A01b2723c05` |
+| `NasaRainfallConsumer` | `0xcd36E43CEB04986358A5bbC6883492061AD6a9bF` |
+| `MockStablecoin` | `0x629B047D6d637Ae058d9B6D24308f8116FdB5Ff6` |
+| `CropInsurance` | `0xd786BAD5D896938E384d6C110f5d6bc44BF9a7ed` |
+
+- RPC: Sepolia (chainId `11155111`).
+- O `NasaRainfallConsumer` está cadastrado como `reporter` do `WeatherOracle`
+  e como consumer da subscription Chainlink Functions (id `6561`).
+- A chuva entra no oráculo via `NasaRainfallConsumer.requestRainfall(...)`
+  (a DON busca a NASA POWER). O frontend fala com o `CropInsurance`/`MockStablecoin`.
+- `CropInsurance` aponta para o `WeatherOracle` acima; pool inicial financiado
+  com 100.000 mBRL; prêmio = 5% (`premiumBps = 500`). `MockStablecoin.mint` é
+  aberto — o frontend pode cunhar saldo de teste para o usuário.
+
+## Setup (Sepolia)
 
 ```bash
-anvil                                  # chain local
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 \
-  --private-key <chave_anvil_0> --broadcast
-# anote os endereços logados (MockStablecoin/WeatherOracle/CropInsurance)
+cp .env.example .env     # preencha SEPOLIA_RPC_URL com o seu RPC
+forge build              # gera as ABIs em out/<Contrato>.sol/<Contrato>.json
 ```
 
-- **Frontend**: wagmi apontando para `http://localhost:8545`, chainId do Anvil,
-  endereços do deploy. ABIs em `out/<Contrato>.sol/<Contrato>.json`.
-- **Carteiras da demo**: `chave_anvil_0` = admin/owner (aba Admin);
-  outra conta do Anvil = Dona Marta (importar no MetaMask).
-- **Tempo na demo**: `currentDay()` usa o relógio da chain — use
-  `evm_increaseTime` + `evm_mine` (RPC do Anvil) para "passar os dias" sem
-  esperar, reportando a chuva de cada dia pela aba Admin.
+- **Frontend**: wagmi/viem na chain `sepolia` (chainId `11155111`); endereços
+  já preenchidos no `.env.example`. ABIs de `out/` ou do Etherscan (verificado).
+- **Carteira**: o usuário conecta via RainbowKit/wagmi; `MockStablecoin.mint`
+  é aberto — o front cunha saldo de teste para o usuário.
+- **Oráculo**: a chuva entra via `NasaRainfallConsumer.requestRainfall(...)`
+  (DON → NASA POWER) — ver a seção "Deploy na Sepolia".
 
 ## Exemplo viem (copiar e adaptar)
 
-ABIs ficam em `out/<Contrato>.sol/<Contrato>.json` (campo `.abi`). Anvil =
-chain `foundry` (chainId 31337) do `viem/chains`.
+ABIs ficam em `out/<Contrato>.sol/<Contrato>.json` (campo `.abi`). Sepolia =
+chain `sepolia` (chainId 11155111) do `viem/chains`.
 
 ```ts
-import { createPublicClient, createWalletClient, http, parseEther } from "viem";
-import { foundry } from "viem/chains";
-import { privateKeyToAccount } from "viem/accounts";
+import { createPublicClient, http, parseEther } from "viem";
+import { sepolia } from "viem/chains";
 
 import CropArtifact from "../../out/CropInsurance.sol/CropInsurance.json";
 import TokenArtifact from "../../out/MockStablecoin.sol/MockStablecoin.json";
@@ -204,15 +221,16 @@ import TokenArtifact from "../../out/MockStablecoin.sol/MockStablecoin.json";
 const cropAbi = CropArtifact.abi;
 const tokenAbi = TokenArtifact.abi;
 
-// endereços vêm do log do Deploy.s.sol
-const CROP = "0x...";
-const TOKEN = "0x...";
+// endereços: ver .env.example (já preenchidos para a Sepolia)
+const CROP = process.env.CROP_INSURANCE_ADDRESS as `0x${string}`;
+const TOKEN = process.env.MOCK_STABLECOIN_ADDRESS as `0x${string}`;
 
-const publicClient = createPublicClient({ chain: foundry, transport: http() });
+const publicClient = createPublicClient({
+  chain: sepolia, transport: http(process.env.SEPOLIA_RPC_URL),
+});
 
-// no app real use a carteira do RainbowKit/wagmi; aqui chave do Anvil p/ exemplo
-const account = privateKeyToAccount("0xac0974bec...");
-const wallet = createWalletClient({ account, chain: foundry, transport: http() });
+// no frontend o walletClient vem do conector do wagmi/RainbowKit
+// (ex.: useWalletClient()); abaixo `wallet` = esse client da carteira conectada.
 
 // --- LEITURA: status de uma apólice ---------------------------------------
 const view = await publicClient.readContract({

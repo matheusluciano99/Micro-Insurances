@@ -6,4 +6,7 @@ solc = "0.8.34"
 # Paris evita opcode PUSH0 (Shanghai), garantindo deploy em L2s/chains antigas.
 evm_version = "paris"
 
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
