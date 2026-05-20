@@ -194,39 +194,51 @@ Contratos verificados no Etherscan. ABIs: rode `forge build` (geram em
 
 ## Setup (Sepolia)
 
+Repo é um monorepo: `contracts/` (Foundry) e `frontend/` (Next.js).
+
 ```bash
-cp .env.example .env     # preencha SEPOLIA_RPC_URL com o seu RPC
-forge build              # gera as ABIs em out/<Contrato>.sol/<Contrato>.json
+# contratos
+cd contracts
+cp .env.example .env        # SEPOLIA_RPC_URL, SUBSCRIPTION_ID, ETHERSCAN_API_KEY
+forge build                  # gera ABIs em contracts/out/<C>.sol/<C>.json
+
+# frontend
+cd ../frontend
+cp .env.example .env.local   # NEXT_PUBLIC_* (endereços já preenchidos)
+npm install
+npm run dev                  # http://localhost:3000
 ```
 
 - **Frontend**: wagmi/viem na chain `sepolia` (chainId `11155111`); endereços
-  já preenchidos no `.env.example`. ABIs de `out/` ou do Etherscan (verificado).
-- **Carteira**: o usuário conecta via RainbowKit/wagmi; `MockStablecoin.mint`
+  já no `.env.example`. ABIs estão **commitadas em `frontend/lib/abi/*.ts`**
+  como const tipadas (não precisa gerar do `out/`).
+- **Carteira**: usuário conecta via RainbowKit/wagmi; `MockStablecoin.mint`
   é aberto — o front cunha saldo de teste para o usuário.
 - **Oráculo**: a chuva entra via `NasaRainfallConsumer.requestRainfall(...)`
   (DON → NASA POWER) — ver a seção "Deploy na Sepolia".
 
 ## Exemplo viem (copiar e adaptar)
 
-ABIs ficam em `out/<Contrato>.sol/<Contrato>.json` (campo `.abi`). Sepolia =
-chain `sepolia` (chainId 11155111) do `viem/chains`.
+No `frontend/`, as ABIs estão tipadas em `lib/abi/*.ts` (com `as const`).
+Sepolia = chain `sepolia` (chainId 11155111) do `viem/chains`.
 
 ```ts
 import { createPublicClient, http, parseEther } from "viem";
 import { sepolia } from "viem/chains";
 
-import CropArtifact from "../../out/CropInsurance.sol/CropInsurance.json";
-import TokenArtifact from "../../out/MockStablecoin.sol/MockStablecoin.json";
+import { cropInsuranceAbi } from "@/lib/abi/cropInsurance";
+import { mockStablecoinAbi } from "@/lib/abi/mockStablecoin";
 
-const cropAbi = CropArtifact.abi;
-const tokenAbi = TokenArtifact.abi;
+const cropAbi = cropInsuranceAbi;
+const tokenAbi = mockStablecoinAbi;
 
-// endereços: ver .env.example (já preenchidos para a Sepolia)
-const CROP = process.env.CROP_INSURANCE_ADDRESS as `0x${string}`;
-const TOKEN = process.env.MOCK_STABLECOIN_ADDRESS as `0x${string}`;
+// endereços: ver .env.example (NEXT_PUBLIC_*) ou frontend/lib/contracts.ts
+const CROP = process.env.NEXT_PUBLIC_CROP_INSURANCE_ADDRESS as `0x${string}`;
+const TOKEN = process.env.NEXT_PUBLIC_MOCK_STABLECOIN_ADDRESS as `0x${string}`;
 
 const publicClient = createPublicClient({
-  chain: sepolia, transport: http(process.env.SEPOLIA_RPC_URL),
+  chain: sepolia,
+  transport: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL),
 });
 
 // no frontend o walletClient vem do conector do wagmi/RainbowKit
