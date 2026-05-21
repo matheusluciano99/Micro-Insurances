@@ -3,3 +3,9 @@ deploy:
 
 deploy-core:
     forge script script/DeployCore.s.sol:DeployCore --rpc-url sepolia --account default --broadcast --verify
+
+seed-demo:
+    forge script script/SeedDemoData.s.sol:SeedDemoData --rpc-url sepolia --account default --broadcast
+
+request-real:
+    forge script script/RequestRealNasa.s.sol:RequestRealNasa --rpc-url sepolia --account default --broadcast

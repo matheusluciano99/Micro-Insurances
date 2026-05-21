@@ -5,6 +5,7 @@ import "./globals.css";
 import { Navbar } from "@/components/navbar";
 import { AuthProvider } from "@/lib/auth-context";
 import { Footer } from "@/components/footter";
+import { Providers } from "@/lib/providers";
 
 const sansFont = Manrope({
   subsets: ["latin"],
@@ -29,11 +30,13 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="pt-BR">
       <body className={`${sansFont.variable} ${headingFont.variable} antialiased`}>
-        <AuthProvider>
+        <Providers>
+          <AuthProvider>
             <Navbar />
             {children}
             <Footer />
-        </AuthProvider>
+          </AuthProvider>
+        </Providers>
       </body>
     </html>
   );
