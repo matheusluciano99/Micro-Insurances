@@ -78,8 +78,12 @@ contract RequestRealNasa is Script {
         if (s.length >= width) return string(s);
         bytes memory out = new bytes(width);
         uint256 zeros = width - s.length;
-        for (uint256 i = 0; i < zeros; i++) out[i] = bytes1("0");
-        for (uint256 i = 0; i < s.length; i++) out[zeros + i] = s[i];
+        for (uint256 i = 0; i < zeros; i++) {
+            out[i] = bytes1("0");
+        }
+        for (uint256 i = 0; i < s.length; i++) {
+            out[zeros + i] = s[i];
+        }
         return string(out);
     }
 

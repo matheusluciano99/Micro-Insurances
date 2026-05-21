@@ -27,8 +27,7 @@ contract SeedDemoData is Script {
         // Padrão de chuva pra região úmida — todos os valores > 100 (1 mm)
         // pra streak de seca nunca subir. Variação só pra dar visual ao gráfico.
         uint16[20] memory wetMm100 = [
-            uint16(250), 200, 280, 150, 220, 300, 200, 250, 180, 240,
-            200, 270, 150, 290, 220, 300, 250, 200, 180, 240
+            uint16(250), 200, 280, 150, 220, 300, 200, 250, 180, 240, 200, 270, 150, 290, 220, 300, 250, 200, 180, 240
         ];
 
         vm.startBroadcast();
