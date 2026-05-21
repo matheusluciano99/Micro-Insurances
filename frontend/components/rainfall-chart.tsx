@@ -11,6 +11,22 @@ type Props = {
   thresholdMm: number
 }
 
+// Converte dia absoluto (epoch/86400) para "DD/MM" — UI-friendly.
+function dayToDDMM(day: number): string {
+  const d = new Date(day * 86400 * 1000)
+  const dd = String(d.getUTCDate()).padStart(2, "0")
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0")
+  return `${dd}/${mm}`
+}
+
+// "DD/MM/YYYY" para o tooltip — mais explícito quando o usuário hover.
+function dayToFullDate(day: number): string {
+  const d = new Date(day * 86400 * 1000)
+  const dd = String(d.getUTCDate()).padStart(2, "0")
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0")
+  return `${dd}/${mm}/${d.getUTCFullYear()}`
+}
+
 export function RainfallChart({ data, thresholdMm }: Props) {
   return (
     <ResponsiveContainer width="100%" height={200}>
@@ -20,7 +36,8 @@ export function RainfallChart({ data, thresholdMm }: Props) {
           tick={{ fontSize: 11, fill: "#9ca3af" }}
           tickLine={false}
           axisLine={false}
-          label={{ value: "Dia", position: "insideBottom", offset: -2, fontSize: 11, fill: "#9ca3af" }}
+          tickFormatter={(v) => dayToDDMM(Number(v))}
+          minTickGap={16}
         />
         <YAxis
           tick={{ fontSize: 11, fill: "#9ca3af" }}
@@ -29,8 +46,8 @@ export function RainfallChart({ data, thresholdMm }: Props) {
           tickFormatter={(v) => `${v}mm`}
         />
         <Tooltip
-          formatter={(value) => [value != null ? `${Number(value).toFixed(1)} mm` : "N/A", "Chuva"]}
-          labelFormatter={(label) => `Dia ${label}`}
+          formatter={(value) => [value != null ? `${Number(value).toFixed(2)} mm` : "N/A", "Chuva"]}
+          labelFormatter={(label) => dayToFullDate(Number(label))}
           contentStyle={{ fontSize: 12, borderRadius: 8, border: "0.5px solid #e5e7eb" }}
         />
         <ReferenceLine
