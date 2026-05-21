@@ -1,94 +1,85 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import { ShieldCheck, Plus, FileX } from "lucide-react"
-import { Policy, PolicyStatus } from "../types/apolice"
-import { PolicyCard } from "@/components/policy-card"
+import { useState } from "react";
+import Link from "next/link";
+import { ShieldCheck, Plus, FileX, Loader2, Wallet } from "lucide-react";
+import { useReadContract } from "wagmi";
 
-// TODO: integração — substituir por:
-// const ids = await readContract({ functionName: 'getPoliciesByHolder', args: [address] })
-// const policies = await Promise.all(ids.map(id => readContract({ functionName: 'getPolicy', args: [id] })))
-const MOCK_POLICIES: Policy[] = [
-  {
-    id: 1,
-    region: "Nordeste",
-    startDate: "2025-06-01",
-    endDate: "2025-08-30",
-    insuredAmount: "1000.00",
-    premium: "50.00",
-    status: "Ativa",
-    maxStreak: 7,
-    drySpellDays: 10,
-    thresholdMm: 1.5,
-    daysElapsed: 30,
-    daysRemaining: 45,
-  },
-  {
-    id: 2,
-    region: "Sudeste",
-    startDate: "2025-04-01",
-    endDate: "2025-06-30",
-    insuredAmount: "2000.00",
-    premium: "100.00",
-    status: "Acionável",
-    maxStreak: 14,
-    drySpellDays: 14,
-    thresholdMm: 1.5,
-    daysRemaining: 0,
-  },
-  {
-    id: 3,
-    region: "Centro-Oeste",
-    startDate: "2025-01-01",
-    endDate: "2025-03-31",
-    insuredAmount: "1500.00",
-    premium: "75.00",
-    status: "Paga",
-    maxStreak: 20,
-    drySpellDays: 15,
-    thresholdMm: 1.5,
-    daysRemaining: 0,
-  },
-  {
-    id: 4,
-    region: "Sul",
-    startDate: "2024-10-01",
-    endDate: "2024-12-31",
-    insuredAmount: "800.00",
-    premium: "40.00",
-    status: "Expirada",
-    maxStreak: 5,
-    drySpellDays: 12,
-    thresholdMm: 1.5,
-    daysRemaining: 0,
-  },
-]
+import { Policy, PolicyStatus } from "../types/apolice";
+import { PolicyCard } from "@/components/policy-card";
+import { CONTRACTS } from "@/lib/contracts";
+import { cropInsuranceAbi } from "@/lib/abi/cropInsurance";
+import {
+  ContractPolicyView,
+  mapPolicyView,
+} from "@/lib/policy";
+import { useAuth } from "@/lib/auth-context";
 
-const FILTROS = ["Todos", "Ativa", "Acionável", "Paga", "Expirada"] as const
-type Filtro = typeof FILTROS[number]
+const FILTROS = ["Todos", "Ativa", "Acionável", "Paga", "Expirada"] as const;
+type Filtro = (typeof FILTROS)[number];
 
 export default function ApolicesPage() {
-  const [filtroAtivo, setFiltroAtivo] = useState<Filtro>("Todos")
+  const { isConnected, address, connect } = useAuth();
+  const [filtroAtivo, setFiltroAtivo] = useState<Filtro>("Todos");
 
-  const apolicesFiltradas = MOCK_POLICIES.filter(p =>
-    filtroAtivo === "Todos" ? true : p.status === filtroAtivo
-  )
+  const { data, isLoading, isError } = useReadContract({
+    address: CONTRACTS.cropInsurance,
+    abi: cropInsuranceAbi,
+    functionName: "getPoliciesByHolder",
+    args: address ? [address as `0x${string}`] : undefined,
+    query: { enabled: !!address },
+  });
 
-  const contagem = MOCK_POLICIES.reduce(
+  const apolices: Policy[] = (
+    (data as ContractPolicyView[] | undefined) ?? []
+  ).map(mapPolicyView);
+
+  const apolicesFiltradas = apolices.filter((p) =>
+    filtroAtivo === "Todos" ? true : p.status === filtroAtivo,
+  );
+
+  const contagem = apolices.reduce(
     (acc, p) => ({ ...acc, [p.status]: (acc[p.status] ?? 0) + 1 }),
-    {} as Record<PolicyStatus, number>
-  )
+    {} as Record<PolicyStatus, number>,
+  );
+
+  if (!isConnected) {
+    return (
+      <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-10 max-w-sm w-full text-center">
+          <div className="flex justify-center mb-4">
+            <div className="bg-blue-100 rounded-full p-4">
+              <Wallet className="text-blue-500" size={32} />
+            </div>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            Conecte sua carteira
+          </h2>
+          <p className="text-sm text-gray-500 mb-6">
+            Para ver suas apólices, conecte a carteira.
+          </p>
+          <button
+            onClick={connect}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+          >
+            <Wallet size={18} />
+            Conectar carteira
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-2xl mx-auto">
-
         <div className="flex justify-between items-start mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Minhas apólices</h1>
             <p className="text-gray-500 mt-1">
-              {MOCK_POLICIES.length} apólice{MOCK_POLICIES.length !== 1 ? "s" : ""} no total
+              {isLoading
+                ? "Carregando..."
+                : `${apolices.length} apólice${apolices.length !== 1 ? "s" : ""} no total`}
             </p>
           </div>
           <Link
@@ -101,11 +92,12 @@ export default function ApolicesPage() {
         </div>
 
         <div className="flex gap-2 mb-6 flex-wrap">
-          {FILTROS.map(filtro => {
-            const isAtivo = filtroAtivo === filtro
-            const count = filtro === "Todos"
-              ? MOCK_POLICIES.length
-              : (contagem[filtro as PolicyStatus] ?? 0)
+          {FILTROS.map((filtro) => {
+            const isAtivo = filtroAtivo === filtro;
+            const count =
+              filtro === "Todos"
+                ? apolices.length
+                : (contagem[filtro as PolicyStatus] ?? 0);
             return (
               <button
                 key={filtro}
@@ -118,18 +110,32 @@ export default function ApolicesPage() {
               >
                 {filtro}
                 {count > 0 && (
-                  <span className={`ml-1.5 text-xs ${isAtivo ? "text-blue-200" : "text-gray-400"}`}>
+                  <span
+                    className={`ml-1.5 text-xs ${isAtivo ? "text-blue-200" : "text-gray-400"}`}
+                  >
                     {count}
                   </span>
                 )}
               </button>
-            )
+            );
           })}
         </div>
 
-        {apolicesFiltradas.length > 0 ? (
+        {isLoading ? (
+          <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center">
+            <Loader2 className="text-gray-400 animate-spin mx-auto mb-3" size={28} />
+            <p className="text-sm text-gray-500">Lendo suas apólices on-chain...</p>
+          </div>
+        ) : isError ? (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
+            <p className="text-sm text-red-700">
+              Não foi possível ler as apólices. Verifique a rede (Sepolia) e tente
+              novamente.
+            </p>
+          </div>
+        ) : apolicesFiltradas.length > 0 ? (
           <div className="flex flex-col gap-4">
-            {apolicesFiltradas.map(policy => (
+            {apolicesFiltradas.map((policy) => (
               <PolicyCard key={policy.id} policy={policy} />
             ))}
           </div>
@@ -137,10 +143,11 @@ export default function ApolicesPage() {
           <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center">
             <div className="flex justify-center mb-4">
               <div className="bg-gray-100 rounded-full p-4">
-                {filtroAtivo === "Todos"
-                  ? <ShieldCheck className="text-gray-400" size={36} />
-                  : <FileX className="text-gray-400" size={36} />
-                }
+                {filtroAtivo === "Todos" ? (
+                  <ShieldCheck className="text-gray-400" size={36} />
+                ) : (
+                  <FileX className="text-gray-400" size={36} />
+                )}
               </div>
             </div>
             <p className="font-medium text-gray-700 mb-1">
@@ -164,8 +171,7 @@ export default function ApolicesPage() {
             )}
           </div>
         )}
-
       </div>
     </main>
-  )
+  );
 }

@@ -1,80 +1,68 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
 import {
-  ShieldCheck, TrendingUp, TrendingDown,
-  CloudRain, Loader2, CheckCircle,
-  AlertCircle, Lock, ChevronDown, ChevronUp,
-} from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
-import { REGIONS } from "@/lib/utils"
-import { PoolStats, PolicyRow, PolicyStatus, TxState } from "../types/apolice"
+  ShieldCheck,
+  TrendingUp,
+  TrendingDown,
+  CloudRain,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Lock,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import { formatEther, parseEther } from "viem";
+import {
+  useReadContract,
+  useWriteContract,
+  usePublicClient,
+} from "wagmi";
 
+import { useAuth } from "@/lib/auth-context";
+import { REGIONS } from "@/lib/utils";
+import { PoolStats, PolicyRow, PolicyStatus, TxState } from "../types/apolice";
+import { CONTRACTS } from "@/lib/contracts";
+import { cropInsuranceAbi } from "@/lib/abi/cropInsurance";
+import { mockStablecoinAbi } from "@/lib/abi/mockStablecoin";
+import { weatherOracleAbi } from "@/lib/abi/weatherOracle";
+import {
+  ContractPolicyView,
+  mapStatus,
+  parseContractError,
+  regionName,
+} from "@/lib/policy";
 
-// ─── Mock: pool stats ─────────────────────────────────────────────────────────
-// TODO: integração — substituir por:
-// const [balance, reserved, free] = await readContract({ functionName: 'poolStats' })
-const MOCK_POOL: PoolStats = {
-  balance:  "50000.00",
-  reserved: "12000.00",
-  free:     "38000.00",
-}
-
-// ─── Mock: todas as apólices ──────────────────────────────────────────────────
-// TODO: integração — substituir por:
-// const policies = await readContract({ functionName: 'getPolicies', args: [0n, 50n] })
-const MOCK_POLICIES: PolicyRow[] = [
-  {
-    id: 1,
-    region: "Sertão Nordestino",
-    holder: "0xf39F...2266",
-    insuredAmount: "1000.00",
-    status: "Ativa",
-    daysRemaining: 45,
-    claimable: false,
-  },
-  {
-    id: 2,
-    region: "Cerrado Goiano",
-    holder: "0x70997...079C",
-    insuredAmount: "2000.00",
-    status: "Acionável",
-    daysRemaining: 0,
-    claimable: true,
-  },
-  {
-    id: 3,
-    region: "Pantanal Mato-grossense",
-    holder: "0x3C44...93BC",
-    insuredAmount: "1500.00",
-    status: "Paga",
-    daysRemaining: 0,
-    claimable: false,
-  },
-  {
-    id: 4,
-    region: "Semiarido Baiano",
-    holder: "0x90F7...4055",
-    insuredAmount: "800.00",
-    status: "Expirada",
-    daysRemaining: 0,
-    claimable: false,
-  },
-]
-
-
+const POOL_ERRORS: Record<string, string> = {
+  "Crop: excede capital livre": "Valor acima do capital livre do pool",
+  "Crop: somente owner": "Apenas o owner pode fazer essa operação",
+  "ERC20: saldo insuficiente": "Saldo de mBRL insuficiente",
+};
+const ORACLE_ERRORS: Record<string, string> = {
+  "Oracle: somente reporter":
+    "Sua carteira não tem permissão de reporter no oráculo",
+};
+const EXPIRE_ERRORS: Record<string, string> = {
+  "Crop: tem seca, use claim":
+    "Esta apólice tem seca acionável — use claim, não expire",
+  "Crop: janela aberta": "A janela da apólice ainda não fechou",
+  "Crop: foi pago": "Esta apólice já foi paga",
+  "Crop: ja liberado": "A reserva desta apólice já foi liberada",
+};
 
 function formatBRL(value: string | number): string {
-  const num = typeof value === "string" ? parseFloat(value) : value
-  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+  const num = typeof value === "string" ? parseFloat(value) : value;
+  if (isNaN(num)) return "R$ 0,00";
+  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 const STATUS_BADGE: Record<PolicyStatus, string> = {
-  Ativa:     "bg-blue-100 text-blue-800",
+  Ativa: "bg-blue-100 text-blue-800",
   Acionável: "bg-amber-100 text-amber-800",
-  Paga:      "bg-green-100 text-green-800",
-  Expirada:  "bg-gray-100 text-gray-500",
-}
+  Paga: "bg-green-100 text-green-800",
+  Expirada: "bg-gray-100 text-gray-500",
+};
 
 function TxFeedback({
   state,
@@ -82,32 +70,48 @@ function TxFeedback({
   successMsg,
   loadingMsg,
 }: {
-  state: TxState
-  errorMsg: string
-  successMsg: string
-  loadingMsg: string
+  state: TxState;
+  errorMsg: string;
+  successMsg: string;
+  loadingMsg: string;
 }) {
-  if (state === "idle") return null
+  if (state === "idle") return null;
   return (
-    <div className={`rounded-xl p-3 flex items-center gap-3 mt-3 ${
-      state === "processando" ? "bg-blue-50 border border-blue-200"
-      : state === "sucesso"   ? "bg-green-50 border border-green-200"
-      : "bg-red-50 border border-red-200"
-    }`}>
-      {state === "processando" && <Loader2 className="text-blue-500 animate-spin flex-shrink-0" size={16} />}
-      {state === "sucesso"     && <CheckCircle className="text-green-500 flex-shrink-0" size={16} />}
-      {state === "erro"        && <AlertCircle className="text-red-400 flex-shrink-0" size={16} />}
-      <p className={`text-sm ${
-        state === "processando" ? "text-blue-700"
-        : state === "sucesso"   ? "text-green-700"
-        : "text-red-700"
-      }`}>
-        {state === "processando" ? loadingMsg
-        : state === "sucesso"    ? successMsg
-        : errorMsg}
+    <div
+      className={`rounded-xl p-3 flex items-center gap-3 mt-3 ${
+        state === "processando"
+          ? "bg-blue-50 border border-blue-200"
+          : state === "sucesso"
+            ? "bg-green-50 border border-green-200"
+            : "bg-red-50 border border-red-200"
+      }`}
+    >
+      {state === "processando" && (
+        <Loader2 className="text-blue-500 animate-spin flex-shrink-0" size={16} />
+      )}
+      {state === "sucesso" && (
+        <CheckCircle className="text-green-500 flex-shrink-0" size={16} />
+      )}
+      {state === "erro" && (
+        <AlertCircle className="text-red-400 flex-shrink-0" size={16} />
+      )}
+      <p
+        className={`text-sm ${
+          state === "processando"
+            ? "text-blue-700"
+            : state === "sucesso"
+              ? "text-green-700"
+              : "text-red-700"
+        }`}
+      >
+        {state === "processando"
+          ? loadingMsg
+          : state === "sucesso"
+            ? successMsg
+            : errorMsg}
       </p>
     </div>
-  )
+  );
 }
 
 function Section({
@@ -117,17 +121,17 @@ function Section({
   children,
   defaultOpen = true,
 }: {
-  title: string
-  subtitle: string
-  icon: React.ReactNode
-  children: React.ReactNode
-  defaultOpen?: boolean
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden mb-4">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors"
       >
         <div className="flex items-center gap-3">
@@ -137,130 +141,184 @@ function Section({
             <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>
           </div>
         </div>
-        {open
-          ? <ChevronUp size={16} className="text-gray-400" />
-          : <ChevronDown size={16} className="text-gray-400" />
-        }
+        {open ? (
+          <ChevronUp size={16} className="text-gray-400" />
+        ) : (
+          <ChevronDown size={16} className="text-gray-400" />
+        )}
       </button>
       {open && (
-        <div className="px-5 pb-5 border-t border-gray-100 pt-4">
-          {children}
-        </div>
+        <div className="px-5 pb-5 border-t border-gray-100 pt-4">{children}</div>
       )}
     </div>
-  )
+  );
 }
 
-
 export default function AdminPage() {
+  const { isAdmin } = useAuth();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
 
-  const { isConnected, isAdmin, address } = useAuth()
+  // Pool stats (balance, reserved, free) — lido on-chain.
+  const { data: poolRaw, refetch: refetchPool } = useReadContract({
+    address: CONTRACTS.cropInsurance,
+    abi: cropInsuranceAbi,
+    functionName: "poolStats",
+    query: { enabled: isAdmin },
+  });
 
-  const [pool, setPool] = useState<PoolStats>(MOCK_POOL)
+  const pool: PoolStats = poolRaw
+    ? (() => {
+        const [balance, reserved, free] = poolRaw as [bigint, bigint, bigint];
+        return {
+          balance: formatEther(balance),
+          reserved: formatEther(reserved),
+          free: formatEther(free),
+        };
+      })()
+    : { balance: "0", reserved: "0", free: "0" };
 
-  const [fundAmount, setFundAmount]   = useState("")
-  const [fundState, setFundState]     = useState<TxState>("idle")
+  // Listagem de todas as apólices (paginação simples: 0..50).
+  const { data: allPoliciesRaw, refetch: refetchPolicies } = useReadContract({
+    address: CONTRACTS.cropInsurance,
+    abi: cropInsuranceAbi,
+    functionName: "getPolicies",
+    args: [0n, 50n],
+    query: { enabled: isAdmin },
+  });
 
-  const [withdrawAmount, setWithdrawAmount] = useState("")
-  const [withdrawState, setWithdrawState]   = useState<TxState>("idle")
-  const [withdrawError, setWithdrawError]   = useState("")
+  const policies: PolicyRow[] = (
+    (allPoliciesRaw as ContractPolicyView[] | undefined) ?? []
+  ).map((v) => ({
+    id: Number(v.id),
+    region: regionName(v.regionId),
+    holder: `${v.holder.slice(0, 6)}...${v.holder.slice(-4)}`,
+    insuredAmount: formatEther(v.insuredAmount),
+    status: mapStatus(v.status),
+    daysRemaining: Number(v.daysRemaining),
+    claimable: v.claimable,
+  }));
 
-  const [rainRegion, setRainRegion] = useState("")
-  const [rainDay, setRainDay]       = useState("")
-  const [rainMm, setRainMm]         = useState("")
-  const [rainState, setRainState]   = useState<TxState>("idle")
+  // ---- estado dos formulários ----
+  const [fundAmount, setFundAmount] = useState("");
+  const [fundState, setFundState] = useState<TxState>("idle");
+  const [fundError, setFundError] = useState("");
 
-  const [expiringId, setExpiringId] = useState<number | null>(null)
-  const [policies, setPolicies]     = useState<PolicyRow[]>(MOCK_POLICIES)
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawState, setWithdrawState] = useState<TxState>("idle");
+  const [withdrawError, setWithdrawError] = useState("");
+
+  const [rainRegion, setRainRegion] = useState("");
+  const [rainDay, setRainDay] = useState("");
+  const [rainMm, setRainMm] = useState("");
+  const [rainState, setRainState] = useState<TxState>("idle");
+  const [rainError, setRainError] = useState("");
+
+  const [expiringId, setExpiringId] = useState<number | null>(null);
 
   async function handleFund() {
-    if (!fundAmount || parseFloat(fundAmount) <= 0) return
+    if (!publicClient || !fundAmount || parseFloat(fundAmount) <= 0) return;
+    setFundError("");
     try {
-      setFundState("processando")
-      // TODO: integração — substituir por:
-      // await writeContractAsync({ address: TOKEN, abi: tokenAbi, functionName: 'approve', args: [CROP, parseEther(fundAmount)] })
-      // await writeContractAsync({ address: CROP, abi: cropAbi, functionName: 'fundPool', args: [parseEther(fundAmount)] })
-      await new Promise(r => setTimeout(r, 2000))
-      // Atualiza o pool mock localmente
-      setPool(prev => ({
-        balance:  (parseFloat(prev.balance)  + parseFloat(fundAmount)).toFixed(2),
-        reserved: prev.reserved,
-        free:     (parseFloat(prev.free)     + parseFloat(fundAmount)).toFixed(2),
-      }))
-      setFundAmount("")
-      setFundState("sucesso")
-      setTimeout(() => setFundState("idle"), 3000)
-    } catch {
-      setFundState("erro")
+      setFundState("processando");
+      const amount = parseEther(fundAmount);
+      // 1) approve
+      const approveHash = await writeContractAsync({
+        address: CONTRACTS.mockStablecoin,
+        abi: mockStablecoinAbi,
+        functionName: "approve",
+        args: [CONTRACTS.cropInsurance, amount],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      // 2) fundPool
+      const fundHash = await writeContractAsync({
+        address: CONTRACTS.cropInsurance,
+        abi: cropInsuranceAbi,
+        functionName: "fundPool",
+        args: [amount],
+      });
+      await publicClient.waitForTransactionReceipt({ hash: fundHash });
+      await refetchPool();
+      setFundAmount("");
+      setFundState("sucesso");
+      setTimeout(() => setFundState("idle"), 3000);
+    } catch (err) {
+      setFundError(parseContractError(err, POOL_ERRORS));
+      setFundState("erro");
     }
   }
 
   async function handleWithdraw() {
-    const valor = parseFloat(withdrawAmount)
-    const livre = parseFloat(pool.free)
-
-    // Validação: não pode sacar mais do que o capital livre
-    if (!withdrawAmount || valor <= 0) return
-    if (valor > livre) {
-      setWithdrawError(`Valor excede o capital livre (${formatBRL(pool.free)})`)
-      setWithdrawState("erro")
-      return
+    if (!publicClient) return;
+    const valor = parseFloat(withdrawAmount);
+    if (!withdrawAmount || valor <= 0) return;
+    if (valor > parseFloat(pool.free)) {
+      setWithdrawError(`Valor excede o capital livre (${formatBRL(pool.free)})`);
+      setWithdrawState("erro");
+      return;
     }
-
+    setWithdrawError("");
     try {
-      setWithdrawError("")
-      setWithdrawState("processando")
-      // TODO: integração — substituir por:
-      // await writeContractAsync({ address: CROP, abi: cropAbi, functionName: 'withdrawCapital', args: [parseEther(withdrawAmount)] })
-      await new Promise(r => setTimeout(r, 2000))
-      setPool(prev => ({
-        balance:  (parseFloat(prev.balance) - valor).toFixed(2),
-        reserved: prev.reserved,
-        free:     (parseFloat(prev.free)    - valor).toFixed(2),
-      }))
-      setWithdrawAmount("")
-      setWithdrawState("sucesso")
-      setTimeout(() => setWithdrawState("idle"), 3000)
-    } catch {
-      setWithdrawError("Não foi possível retirar. Tente novamente.")
-      setWithdrawState("erro")
+      setWithdrawState("processando");
+      const hash = await writeContractAsync({
+        address: CONTRACTS.cropInsurance,
+        abi: cropInsuranceAbi,
+        functionName: "withdrawCapital",
+        args: [parseEther(withdrawAmount)],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refetchPool();
+      setWithdrawAmount("");
+      setWithdrawState("sucesso");
+      setTimeout(() => setWithdrawState("idle"), 3000);
+    } catch (err) {
+      setWithdrawError(parseContractError(err, POOL_ERRORS));
+      setWithdrawState("erro");
     }
   }
 
   async function handleReportRain() {
-    if (!rainRegion || !rainDay || !rainMm) return
+    if (!publicClient || !rainRegion || !rainDay || !rainMm) return;
+    setRainError("");
     try {
-      setRainState("processando")
-      // TODO: integração — substituir por:
-      // const mm100 = Math.round(parseFloat(rainMm) * 100)  // converte mm para mm×100
-      // await writeContractAsync({
-      //   address: ORACLE, abi: oracleAbi,
-      //   functionName: 'reportRainfall',
-      //   args: [BigInt(rainRegion), BigInt(rainDay), BigInt(mm100)]
-      // })
-      await new Promise(r => setTimeout(r, 1500))
-      setRainRegion("")
-      setRainDay("")
-      setRainMm("")
-      setRainState("sucesso")
-      setTimeout(() => setRainState("idle"), 3000)
-    } catch {
-      setRainState("erro")
+      setRainState("processando");
+      const mm100 = Math.round(parseFloat(rainMm) * 100);
+      const hash = await writeContractAsync({
+        address: CONTRACTS.weatherOracle,
+        abi: weatherOracleAbi,
+        functionName: "reportRainfall",
+        args: [BigInt(rainRegion), BigInt(rainDay), BigInt(mm100)],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      setRainRegion("");
+      setRainDay("");
+      setRainMm("");
+      setRainState("sucesso");
+      setTimeout(() => setRainState("idle"), 3000);
+    } catch (err) {
+      setRainError(parseContractError(err, ORACLE_ERRORS));
+      setRainState("erro");
     }
   }
 
   async function handleExpire(policyId: number) {
+    if (!publicClient) return;
     try {
-      setExpiringId(policyId)
-      // TODO: integração — substituir por:
-      // await writeContractAsync({ address: CROP, abi: cropAbi, functionName: 'expirePolicy', args: [BigInt(policyId)] })
-      await new Promise(r => setTimeout(r, 1500))
-      // Atualiza status localmente
-      setPolicies(prev =>
-        prev.map(p => p.id === policyId ? { ...p, status: "Expirada" as PolicyStatus } : p)
-      )
+      setExpiringId(policyId);
+      const hash = await writeContractAsync({
+        address: CONTRACTS.cropInsurance,
+        abi: cropInsuranceAbi,
+        functionName: "expirePolicy",
+        args: [BigInt(policyId)],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refetchPolicies();
+      await refetchPool();
+    } catch (err) {
+      // mostra no console; podemos evoluir pra um toast por linha
+      console.error("expirePolicy:", parseContractError(err, EXPIRE_ERRORS));
     } finally {
-      setExpiringId(null)
+      setExpiringId(null);
     }
   }
 
@@ -275,18 +333,17 @@ export default function AdminPage() {
           </div>
           <h1 className="text-xl font-bold text-gray-900 mb-2">Acesso restrito</h1>
           <p className="text-sm text-gray-500">
-            Esta página é exclusiva para o administrador do contrato.
-            Conecte a carteira correta para acessar.
+            Esta página é exclusiva para o administrador do contrato. Conecte a
+            carteira correta para acessar.
           </p>
         </div>
       </main>
-    )
+    );
   }
 
   return (
     <main className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-2xl mx-auto">
-
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
             <ShieldCheck size={20} className="text-blue-600" />
@@ -304,6 +361,7 @@ export default function AdminPage() {
               value: formatBRL(pool.balance),
               color: "text-gray-900",
               bg: "bg-white",
+              border: undefined as string | undefined,
             },
             {
               label: "Capital reservado",
@@ -319,7 +377,7 @@ export default function AdminPage() {
               bg: "bg-green-50",
               border: "border-green-200",
             },
-          ].map(card => (
+          ].map((card) => (
             <div
               key={card.label}
               className={`${card.bg} border ${card.border ?? "border-gray-200"} rounded-2xl p-4`}
@@ -342,8 +400,8 @@ export default function AdminPage() {
             <input
               type="number"
               value={fundAmount}
-              onChange={e => setFundAmount(e.target.value)}
-              placeholder="Valor em R$"
+              onChange={(e) => setFundAmount(e.target.value)}
+              placeholder="Valor em mBRL"
               min={1}
               className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -354,14 +412,16 @@ export default function AdminPage() {
             >
               {fundState === "processando" ? (
                 <Loader2 className="animate-spin" size={16} />
-              ) : "Depositar"}
+              ) : (
+                "Depositar"
+              )}
             </button>
           </div>
           <TxFeedback
             state={fundState}
-            loadingMsg="Processando depósito..."
+            loadingMsg="Processando depósito (approve + fundPool)..."
             successMsg="Capital aportado com sucesso!"
-            errorMsg="Não foi possível aportar. Tente novamente."
+            errorMsg={fundError || "Não foi possível aportar."}
           />
         </Section>
 
@@ -372,18 +432,19 @@ export default function AdminPage() {
           defaultOpen={false}
         >
           <p className="text-xs text-gray-400 mb-3">
-            Capital livre disponível: <span className="font-medium text-gray-600">{formatBRL(pool.free)}</span>.
+            Capital livre disponível:{" "}
+            <span className="font-medium text-gray-600">{formatBRL(pool.free)}</span>.
             Você não pode retirar capital reservado para apólices ativas.
           </p>
           <div className="flex gap-2">
             <input
               type="number"
               value={withdrawAmount}
-              onChange={e => {
-                setWithdrawAmount(e.target.value)
-                setWithdrawState("idle")
+              onChange={(e) => {
+                setWithdrawAmount(e.target.value);
+                setWithdrawState("idle");
               }}
-              placeholder="Valor em R$"
+              placeholder="Valor em mBRL"
               min={1}
               max={parseFloat(pool.free)}
               className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -395,14 +456,16 @@ export default function AdminPage() {
             >
               {withdrawState === "processando" ? (
                 <Loader2 className="animate-spin" size={16} />
-              ) : "Retirar"}
+              ) : (
+                "Retirar"
+              )}
             </button>
           </div>
           <TxFeedback
             state={withdrawState}
             loadingMsg="Processando retirada..."
             successMsg="Capital retirado com sucesso!"
-            errorMsg={withdrawError || "Não foi possível retirar. Tente novamente."}
+            errorMsg={withdrawError || "Não foi possível retirar."}
           />
         </Section>
 
@@ -412,21 +475,23 @@ export default function AdminPage() {
           icon={<CloudRain size={20} />}
         >
           <p className="text-xs text-gray-400 mb-3">
-            Na demo, o admin reporta manualmente. Em produção isso é feito automaticamente
-            pelo Chainlink (NASA POWER API).
+            Reporta direto no WeatherOracle (sua carteira é reporter). Em produção
+            isso é feito automaticamente pelo Chainlink Functions consumindo a NASA
+            POWER.
           </p>
           <div className="grid grid-cols-3 gap-2 mb-2">
-            {/* Região */}
             <div>
               <label className="block text-xs text-gray-500 mb-1">Região</label>
               <select
                 value={rainRegion}
-                onChange={e => setRainRegion(e.target.value)}
+                onChange={(e) => setRainRegion(e.target.value)}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Selecione...</option>
                 {REGIONS.map((r: { id: string; name: string }) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -438,8 +503,8 @@ export default function AdminPage() {
               <input
                 type="number"
                 value={rainDay}
-                onChange={e => setRainDay(e.target.value)}
-                placeholder="ex: 20120"
+                onChange={(e) => setRainDay(e.target.value)}
+                placeholder="ex: 20592"
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -448,7 +513,7 @@ export default function AdminPage() {
               <input
                 type="number"
                 value={rainMm}
-                onChange={e => setRainMm(e.target.value)}
+                onChange={(e) => setRainMm(e.target.value)}
                 placeholder="ex: 1.50"
                 step={0.01}
                 min={0}
@@ -469,7 +534,9 @@ export default function AdminPage() {
 
           <button
             onClick={handleReportRain}
-            disabled={rainState === "processando" || !rainRegion || !rainDay || !rainMm}
+            disabled={
+              rainState === "processando" || !rainRegion || !rainDay || !rainMm
+            }
             className="w-full bg-sky-600 hover:bg-sky-700 disabled:bg-sky-200 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
           >
             {rainState === "processando" ? (
@@ -477,14 +544,16 @@ export default function AdminPage() {
                 <Loader2 className="animate-spin" size={15} />
                 Reportando...
               </span>
-            ) : "Reportar chuva"}
+            ) : (
+              "Reportar chuva"
+            )}
           </button>
 
           <TxFeedback
             state={rainState}
             loadingMsg="Enviando dados ao oráculo..."
             successMsg="Chuva reportada com sucesso!"
-            errorMsg="Não foi possível reportar. Verifique sua permissão de reporter."
+            errorMsg={rainError || "Não foi possível reportar."}
           />
         </Section>
 
@@ -494,58 +563,66 @@ export default function AdminPage() {
           icon={<ShieldCheck size={20} />}
           defaultOpen={false}
         >
-          <div className="flex flex-col gap-3">
-            {policies.map(policy => (
-              <div
-                key={policy.id}
-                className="border border-gray-100 rounded-xl p-4 flex items-center justify-between gap-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      #{policy.id} — {policy.region}
+          {policies.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">
+              Nenhuma apólice criada ainda.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {policies.map((policy) => (
+                <div
+                  key={policy.id}
+                  className="border border-gray-100 rounded-xl p-4 flex items-center justify-between gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        #{policy.id} — {policy.region}
+                      </p>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_BADGE[policy.status]}`}
+                      >
+                        {policy.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 font-mono truncate">
+                      {policy.holder}
                     </p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_BADGE[policy.status]}`}>
-                      {policy.status}
-                    </span>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {formatBRL(policy.insuredAmount)} segurados
+                      {policy.status === "Ativa" &&
+                        ` · ${policy.daysRemaining} dias restantes`}
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-400 font-mono truncate">
-                    {policy.holder}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {formatBRL(policy.insuredAmount)} segurados
-                    {policy.status === "Ativa" && ` · ${policy.daysRemaining} dias restantes`}
-                  </p>
+
+                  {policy.status === "Ativa" && !policy.claimable && (
+                    <button
+                      onClick={() => handleExpire(policy.id)}
+                      disabled={expiringId === policy.id}
+                      className="text-xs text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 flex items-center gap-1.5"
+                    >
+                      {expiringId === policy.id ? (
+                        <Loader2 className="animate-spin" size={12} />
+                      ) : null}
+                      Expirar
+                    </button>
+                  )}
+
+                  {policy.status === "Acionável" && (
+                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-lg flex-shrink-0">
+                      Use claim
+                    </span>
+                  )}
                 </div>
-
-                {policy.status === "Ativa" && !policy.claimable && (
-                  <button
-                    onClick={() => handleExpire(policy.id)}
-                    disabled={expiringId === policy.id}
-                    className="text-xs text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 flex items-center gap-1.5"
-                  >
-                    {expiringId === policy.id ? (
-                      <Loader2 className="animate-spin" size={12} />
-                    ) : null}
-                    Expirar
-                  </button>
-                )}
-
-                {policy.status === "Acionável" && (
-                  <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-lg flex-shrink-0">
-                    Use claim
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           <p className="text-xs text-gray-400 text-center mt-4">
-            Mostrando {policies.length} apólices.
+            Mostrando {policies.length} apólice{policies.length !== 1 ? "s" : ""}.
           </p>
         </Section>
-
       </div>
     </main>
-  )
+  );
 }
